@@ -25,6 +25,10 @@ bool UCLionSettings::CheckSettings()
 		{
 			this->CLion.FilePath = TEXT("C:\\Program Files (x86)\\JetBrains\\CLion 2016.2\\bin\\clion.exe");
 		}
+		else if (FPaths::FileExists(TEXT("C:\\Program Files (x86)\\JetBrains\\CLion 2016.1\\bin\\clion.exe")))
+		{
+			this->CLion.FilePath = TEXT("C:\\Program Files (x86)\\JetBrains\\CLion 2016.1\\bin\\clion.exe");
+		}
 	}
 #elif PLATFORM_MAC
     if ( this->CLion.FilePath.IsEmpty())

@@ -82,4 +82,15 @@ private:
 
 	static FString GetBuildCommands(FXmlNode *CurrentNode, const FString &SubprojectName);
 	static FString HandleConfiguration(FXmlNode *CurrentNode, const FString &SubprojectName, FString &MonoPath);
+
+	static const FString UnrealBuildToolPath;
+
+	static FString AdjustBuildCommand(FString Commandline);
+
+	/** 
+	 * Transform a string into a form that is acceptable as filename for the platform.
+	 */
+	static FString NormalizePathname(FString Pathname);
+
+	static FString GetPlatformName();
 };

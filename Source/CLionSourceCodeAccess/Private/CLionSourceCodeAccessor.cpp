@@ -8,6 +8,7 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogCLionAccessor, Log, All);
 
+
 bool FCLionSourceCodeAccessor::AddSourceFiles(const TArray<FString>& AbsoluteSourcePaths, const TArray<FString>& AvailableModules)
 {
     // There is no need to add the files to the make file because it already has wildcard searches of the necessary project folders
@@ -53,14 +54,14 @@ bool FCLionSourceCodeAccessor::GenerateFromCodeLiteProject()
     ProjectGenerationTask.MakeDialog();
     ProjectGenerationTask.EnterProgressFrame(1, LOCTEXT("StartCMakeListGeneration", "Starting CMakeList Generation"));
 
+
     // Cache our path information
-    const FString UnrealBuildToolPath = *FPaths::ConvertRelativePathToFull(*FPaths::Combine(*FPaths::EngineDir(), TEXT("Binaries"), TEXT("DotNET"), TEXT("UnrealBuildTool.exe")));
     const FString ProjectFilePath = *FPaths::ConvertRelativePathToFull(*FPaths::GetProjectFilePath());
     const FString ProjectPath = *FPaths::ConvertRelativePathToFull(*FPaths::GameDir());
     const FString ProjectName = FPaths::GetBaseFilename(ProjectFilePath, true);
 
     // Start our master CMakeList file
-    FString OutputTemplate = TEXT("cmake_minimum_required (VERSION 2.6)\nproject (UE4)\n");
+    FString OutputTemplate = TEXT("cmake_minimum_required (VERSION 2.8.4)\nproject (UE4)\n");
     OutputTemplate.Append(TEXT("set(CMAKE_CXX_STANDARD 11)\n\n"));
 
     // Increase our progress
@@ -139,7 +140,7 @@ bool FCLionSourceCodeAccessor::GenerateFromCodeLiteProject()
     FString IncludeDirectoriesContent = TEXT("set(INCLUDE_DIRECTORIES \n");
     for (FString Line : IncludeDirectoriesLines)
     {
-       IncludeDirectoriesContent.Append(FString::Printf(TEXT("\t\"%s\"\n"), *Line));
+       IncludeDirectoriesContent.Append(FString::Printf(TEXT("\t\"%s\"\n"), *NormalizePathname(Line)));
     }
     IncludeDirectoriesContent.Append(TEXT(")\ninclude_directories(${INCLUDE_DIRECTORIES})\n"));
 
@@ -149,7 +150,7 @@ bool FCLionSourceCodeAccessor::GenerateFromCodeLiteProject()
         UE_LOG(LogCLionAccessor, Error, TEXT("Error writing %s"), *IncludeDirectoriesOutputPath);
         return false;
     }
-    OutputTemplate.Append(FString::Printf(TEXT("include(\"%s\")\n"), *IncludeDirectoriesOutputPath));
+    OutputTemplate.Append(FString::Printf(TEXT("include(\"%s\")\n"), *NormalizePathname(IncludeDirectoriesOutputPath)));
 
     // Gather our information on definitions
     FString DefinitionsData;
@@ -171,7 +172,7 @@ bool FCLionSourceCodeAccessor::GenerateFromCodeLiteProject()
         UE_LOG(LogCLionAccessor, Error, TEXT("Error writing %s"), *DefinitionsOutputPath);
         return false;
     }
-    OutputTemplate.Append(FString::Printf(TEXT("include(\"%s\")\n"), *DefinitionsOutputPath));
+    OutputTemplate.Append(FString::Printf(TEXT("include(\"%s\")\n"), *NormalizePathname(DefinitionsOutputPath)));
 
 
     ProjectGenerationTask.EnterProgressFrame(5, LOCTEXT("CreatingProjectCMakeFiles", "Creating Project CMake Files"));
@@ -244,7 +245,7 @@ bool FCLionSourceCodeAccessor::GenerateFromCodeLiteProject()
         }
 
         // Add Include Of Project Files
-        OutputTemplate.Append(FString::Printf(TEXT("include(\"%s\")\n"), *ProjectOutputPath));
+        OutputTemplate.Append(FString::Printf(TEXT("include(\"%s\")\n"), *NormalizePathname(ProjectOutputPath)));
 
         //Get working directory and build command
         FString CustomTargets = FCLionSourceCodeAccessor::GetBuildCommands(CurrentNode, SubProjectName);
@@ -280,7 +281,7 @@ FString FCLionSourceCodeAccessor::GetAttributeByTagWithRestrictions(FXmlNode *Cu
     FString ReturnContent = "";
 
     if ( CurrentNode->GetTag() == Tag ) {
-        ReturnContent.Append(FString::Printf(TEXT("\t\"%s\"\n"), *CurrentNode->GetAttribute(Attribute)));
+        ReturnContent.Append(FString::Printf(TEXT("\t\"%s\"\n"), *NormalizePathname(CurrentNode->GetAttribute(Attribute))));
     }
 
     const TArray<FXmlNode*> childrenNodes = CurrentNode->GetChildrenNodes();
@@ -354,11 +355,11 @@ FString FCLionSourceCodeAccessor::HandleConfiguration(FXmlNode *CurrentNode, con
                 }
 
                 if (subNode->GetTag() == TEXT("BuildCommand")) {
-                    BuildCommand = subNode->GetContent();
+                    BuildCommand = AdjustBuildCommand(subNode->GetContent());
                 }
 
                 if (subNode->GetTag() == TEXT("CleanCommand")) {
-                    CleanCommand = subNode->GetContent();
+                    CleanCommand = AdjustBuildCommand(subNode->GetContent());
                 }
             }
 
@@ -366,12 +367,14 @@ FString FCLionSourceCodeAccessor::HandleConfiguration(FXmlNode *CurrentNode, con
                     FString::Printf(TEXT("\n# Custom target for %s project, %s configuration\n"), *SubprojectName, *ConfigurationName);
             if (MonoPath != WorkingDirectory) { // Do this to avoid duplication in CMakeLists.txt
                 ReturnContent +=
-                        FString::Printf(TEXT("set(MONO_ROOT_PATH \"%s\")\n") , *WorkingDirectory);
+                        FString::Printf(TEXT("set(MONO_ROOT_PATH \"%s\")\n") , *NormalizePathname(WorkingDirectory));
                 MonoPath = WorkingDirectory;
 
                 ReturnContent +=
-                        FString::Printf(TEXT("set(BUILD cd \"${MONO_ROOT_PATH}\")\n\n"));
-            }
+					FString::Printf(TEXT("set(BUILD cd \"${MONO_ROOT_PATH}\")\n"));
+				ReturnContent +=
+					FString::Printf(TEXT("set(UBT \"%s\")\n\n"), *UnrealBuildToolPath);
+            }			
 
             if (ConfigurationName == TEXT("Development")) {
                 ReturnContent +=
@@ -380,14 +383,56 @@ FString FCLionSourceCodeAccessor::HandleConfiguration(FXmlNode *CurrentNode, con
                         FString::Printf(TEXT("add_custom_target(%s-clean ${BUILD} && %s)\n\n") , *SubprojectName , *CleanCommand);
             } else {
                 ReturnContent +=
-                        FString::Printf(TEXT("add_custom_target(%s-Mac-%s ${BUILD} && %s -game)\n") , *SubprojectName , *ConfigurationName , *BuildCommand);
+                        FString::Printf(TEXT("add_custom_target(%s-%s-%s ${BUILD} && %s -game)\n") , *SubprojectName , *GetPlatformName() , *ConfigurationName , *BuildCommand);
                 ReturnContent +=
-                        FString::Printf(TEXT("add_custom_target(%s-Mac-%s-clean ${BUILD} && %s)\n\n") , *SubprojectName , *ConfigurationName , *CleanCommand);
+                        FString::Printf(TEXT("add_custom_target(%s-%s-%s-clean ${BUILD} && %s)\n\n") , *SubprojectName , *GetPlatformName() , *ConfigurationName , *CleanCommand);
             }
         }
     }
 
     return ReturnContent;
+}
+
+FString FCLionSourceCodeAccessor::AdjustBuildCommand(FString Commandline)
+{
+	FString PlatformName = UGameplayStatics::GetPlatformName();
+	if (PlatformName.StartsWith(TEXT("Windows")))
+	{
+		return NormalizePathname(Commandline.Replace(TEXT("UnrealBuildTool.exe"), TEXT("${UBT}")));
+	}
+	return Commandline;
+}
+
+FString FCLionSourceCodeAccessor::NormalizePathname(FString Pathname)
+{
+	FString PlatformName = UGameplayStatics::GetPlatformName();
+	if (PlatformName.StartsWith(TEXT("Windows")))
+	{
+		return Pathname.Replace(TEXT("\\"), TEXT("/"));
+	}
+	return Pathname;
+}
+
+FString FCLionSourceCodeAccessor::GetPlatformName()
+{
+
+	FString LongPlatformName = UGameplayStatics::GetPlatformName();
+	FString ShortPlatformName = FString(TEXT("Unknown"));
+
+	if (LongPlatformName.StartsWith(TEXT("Windows")))
+	{
+		ShortPlatformName = FString(TEXT("Win"));
+	}
+	else if (LongPlatformName.StartsWith(TEXT("Mac")))
+	{
+		ShortPlatformName = FString(TEXT("Mac"));
+	}
+	else if (LongPlatformName.StartsWith(TEXT("Linux")))
+	{
+		ShortPlatformName = FString(TEXT("Linux"));
+	}
+
+	return ShortPlatformName;
 }
 
 FText FCLionSourceCodeAccessor::GetDescriptionText() const
@@ -499,5 +544,7 @@ void FCLionSourceCodeAccessor::Startup()
 
 	this->Settings->CheckSettings();
 }
+
+const FString FCLionSourceCodeAccessor::UnrealBuildToolPath = *FPaths::ConvertRelativePathToFull(*FPaths::Combine(*FPaths::EngineDir(), TEXT("Binaries"), TEXT("DotNET"), TEXT("UnrealBuildTool.exe")));
 
 #undef LOCTEXT_NAMESPACE
