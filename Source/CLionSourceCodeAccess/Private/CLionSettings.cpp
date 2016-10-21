@@ -17,9 +17,9 @@ bool UCLionSettings::CheckSettings()
 	if (this->CLion.FilePath.IsEmpty())
 	{
 		// Damn windows specific folders
-		if (FPaths::FileExists(TEXT("C:\\Program Files (x86)\\JetBrains\\CLion 2016.1\\bin\\clion64.exe")))
+		if (FPaths::FileExists(TEXT("C:\\Program Files (x86)\\JetBrains\\CLion 2016.3\\bin\\clion64.exe")))
 		{
-			this->CLion.FilePath = TEXT("C:\\Program Files (x86)\\JetBrains\\CLion 2016.2\\bin\\clion64.exe");
+			this->CLion.FilePath = TEXT("C:\\Program Files (x86)\\JetBrains\\CLion 2016.3\\bin\\clion64.exe");
 		}
 		else if (FPaths::FileExists(TEXT("C:\\Program Files (x86)\\JetBrains\\CLion 2016.2\\bin\\clion.exe")))
 		{
